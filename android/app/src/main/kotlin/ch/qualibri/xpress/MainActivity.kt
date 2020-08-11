@@ -1,4 +1,4 @@
-package com.example.xpress
+package ch.qualibri.xpress
 
 import io.flutter.embedding.android.FlutterActivity
 
