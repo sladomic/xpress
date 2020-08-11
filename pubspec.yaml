@@ -30,8 +30,16 @@ dependencies:
   dash_chat: ^1.1.13
   firebase_core: ^0.5.0-dev.1
   cloud_firestore: ^0.14.0-dev.1
-  avataar_generator: ^1.1.1
+  avataar_generator:
+    git:
+      url: https://github.com/sladomic/Avataar-Generator
+      ref: b7e48baefba245f5be519da5e12f90094a571eb9
   flutter_svg: ^0.17.4
+  camera: ^0.5.8+2
+  tflite:
+    git:
+      url: https://github.com/sladomic/flutter_tflite
+      ref: c4275f969405deca7ef8b4c8b1e9e70957d6be9d
 
 dev_dependencies:
   flutter_test:
@@ -49,7 +57,8 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - assets/images/
+    - assets/images/logos/
+    - assets/models/
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware.
   # For details regarding adding assets from package dependencies, see
