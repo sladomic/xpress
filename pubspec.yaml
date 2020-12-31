@@ -34,12 +34,15 @@ dependencies:
     git:
       url: https://github.com/sladomic/Avataar-Generator
       ref: b7e48baefba245f5be519da5e12f90094a571eb9
-  flutter_svg: ^0.17.4
+  flutter_svg: ^0.19.1
   camera: ^0.5.8+2
   tflite:
     git:
       url: https://github.com/sladomic/flutter_tflite
       ref: c4275f969405deca7ef8b4c8b1e9e70957d6be9d
+  firebase_ml_vision: ^0.9.10
+  image: ^2.1.19
+  path_provider: ^1.6.24
 
 dev_dependencies:
   flutter_test:
