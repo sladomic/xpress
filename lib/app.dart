@@ -12,7 +12,6 @@ import 'package:flutter_exif_rotation/flutter_exif_rotation.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as im;
-import 'package:path_provider/path_provider.dart';
 import 'package:tflite/tflite.dart';
 
 const Color primaryColor = Color.fromARGB(255, 245, 54, 88);
@@ -53,7 +52,6 @@ class AppState extends State<App> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   CameraController _cameraController;
   ml.FaceDetector _faceDetector;
-  String _filePath;
   String _emotion = 'neutral';
 
   @override
@@ -66,15 +64,17 @@ class AppState extends State<App> {
     if (frontCameras.length > 0) {
       _cameraController =
           CameraController(frontCameras.first, ResolutionPreset.medium);
+
       _cameraController.initialize().then(
         (_) async {
           if (!mounted) {
             return;
           }
+          await _cameraController.setFlashMode(FlashMode.off);
           await Tflite.loadModel(
               model: "assets/models/emotion_classification_7.tflite",
               labels: "assets/models/emotion_classification_labels.txt",
-              useGpuDelegate: false);
+              useGpuDelegate: true);
           _runRecognitionRecursive();
         },
       );
@@ -174,9 +174,7 @@ class AppState extends State<App> {
   }
 
   Future<String> _takePicture() async {
-    String filePath = (await getTemporaryDirectory()).path +
-        '/image_${DateTime.now().millisecondsSinceEpoch}.jpg';
-    await _cameraController.takePicture(filePath);
+    String filePath = (await _cameraController.takePicture()).path;
     if (Platform.isIOS) {
       final file = await FlutterExifRotation.rotateImage(path: filePath);
       filePath = file.path;
