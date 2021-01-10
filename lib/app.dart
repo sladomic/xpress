@@ -1,12 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:avataar_generator/enums.dart';
+import 'package:firebase_ml_vision/firebase_ml_vision.dart' as ml;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:avataar_generator/generator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dash_chat/dash_chat.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:camera/camera.dart';
+import 'package:image/image.dart' as im;
+import 'package:path_provider/path_provider.dart';
 import 'package:tflite/tflite.dart';
 
 const Color primaryColor = Color.fromARGB(255, 245, 54, 88);
@@ -46,9 +51,9 @@ class AppState extends State<App> {
   final GlobalKey<DashChatState> _chatViewKey = GlobalKey<DashChatState>();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   CameraController _cameraController;
-  Timer _timer;
+  ml.FaceDetector _faceDetector;
+  String _filePath;
   String _emotion = 'neutral';
-  int _timestamp = DateTime.now().millisecondsSinceEpoch;
 
   @override
   void initState() {
@@ -56,35 +61,41 @@ class AppState extends State<App> {
     final List<CameraDescription> frontCameras = widget.cameras
         .where((camera) => camera.lensDirection == CameraLensDirection.front)
         .toList();
+    _faceDetector = ml.FirebaseVision.instance.faceDetector();
     if (frontCameras.length > 0) {
       _cameraController =
           CameraController(frontCameras.first, ResolutionPreset.medium);
-      _cameraController.initialize().then((_) {
-        if (!mounted) {
-          return;
-        }
-        Tflite.loadModel(
-                model: "assets/models/emotion_classification_7.tflite",
-                labels: "assets/models/emotion_classification_labels.txt",
-                useGpuDelegate: false)
-            .then((_) => _cameraController.startImageStream((image) {
-                  if (DateTime.now()
-                          .difference(
-                              DateTime.fromMillisecondsSinceEpoch(_timestamp))
-                          .inSeconds >
-                      1) {
-                    _timestamp = DateTime.now().millisecondsSinceEpoch;
-                    recognizeImageBinary(image);
-                  }
-                })); // TODO use GPU
-      });
+      _cameraController.initialize().then(
+        (_) async {
+          if (!mounted) {
+            return;
+          }
+          Tflite.loadModel(
+                  model: "assets/models/emotion_classification_7.tflite",
+                  labels: "assets/models/emotion_classification_labels.txt",
+                  useGpuDelegate: false)
+              .then((_) {
+            _cameraController.addListener(() async {
+              final file = File.fromUri(Uri.file(_filePath));
+              if (file.existsSync()) {
+                final faces = await detectFaces(file);
+                if (faces.length > 0) {
+                  await detectEmotion(file, faces.first.boundingBox);
+                }
+                await _takePictureDelayed();
+              }
+            });
+            _takePictureDelayed();
+          }); // TODO use GPU
+        },
+      );
     }
   }
 
   @override
   void dispose() async {
     _cameraController?.dispose();
-    _timer.cancel();
+    _faceDetector.close();
     await Tflite.close();
     super.dispose();
   }
@@ -161,6 +172,16 @@ class AppState extends State<App> {
     );
   }
 
+  Future<void> _takePictureDelayed() =>
+      Future.delayed(Duration(milliseconds: 500), () async {
+        String filePath = (await getTemporaryDirectory()).path +
+            '/image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        setState(() {
+          _filePath = filePath;
+        });
+        await _cameraController.takePicture(filePath);
+      });
+
   void onSend(ChatMessage message) {
     var documentReference = FirebaseFirestore.instance
         .collection(_pathCollection)
@@ -180,24 +201,35 @@ class AppState extends State<App> {
     _scaffoldKey.currentState.showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future recognizeImageBinary(CameraImage cameraImage) async {
-    int startTime = new DateTime.now().millisecondsSinceEpoch;
-    var recognitions = await Tflite.runModelOnFrame(
-      bytesList:
-          cameraImage.planes.map((plane) => plane.bytes).toList(), // required
-      imageHeight: cameraImage.height,
-      imageWidth: cameraImage.width,
+  Future<List<ml.Face>> detectFaces(File file) async {
+    final visionImage = ml.FirebaseVisionImage.fromFile(file);
+    return _faceDetector.processImage(visionImage);
+  }
+
+  Future<void> detectEmotion(File file, Rect face) async {
+    final image = im.decodeJpg(file.readAsBytesSync());
+
+    final cropped = im.copyCrop(
+      image,
+      face.left.toInt(),
+      (face.bottom - face.height).toInt(),
+      face.width.toInt(),
+      face.height.toInt(),
+    );
+    final resized = im.copyResize(cropped, width: 48, height: 48);
+    final grayscale = im.grayscale(resized);
+    await file.writeAsBytes(im.encodeJpg(grayscale));
+
+    final recognitions = await Tflite.runModelOnImage(
+      path: _filePath,
       imageMean: 0,
       imageStd: 255,
-      numResults: 1,
-      threshold: 0.3,
-      rotation: _cameraController.description.sensorOrientation,
     );
-    if (recognitions.length > 0)
+
+    if (recognitions.length > 0) {
       setState(() {
         _emotion = recognitions.first['label'];
       });
-    int endTime = new DateTime.now().millisecondsSinceEpoch;
-    print("Inference took ${endTime - startTime}ms");
+    }
   }
 }
