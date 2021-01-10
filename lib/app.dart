@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:avataar_generator/generator.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dash_chat/dash_chat.dart';
+import 'package:flutter_exif_rotation/flutter_exif_rotation.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as im;
@@ -70,23 +71,11 @@ class AppState extends State<App> {
           if (!mounted) {
             return;
           }
-          Tflite.loadModel(
-                  model: "assets/models/emotion_classification_7.tflite",
-                  labels: "assets/models/emotion_classification_labels.txt",
-                  useGpuDelegate: false)
-              .then((_) {
-            _cameraController.addListener(() async {
-              final file = File.fromUri(Uri.file(_filePath));
-              if (file.existsSync()) {
-                final faces = await detectFaces(file);
-                if (faces.length > 0) {
-                  await detectEmotion(file, faces.first.boundingBox);
-                }
-                await _takePictureDelayed();
-              }
-            });
-            _takePictureDelayed();
-          }); // TODO use GPU
+          await Tflite.loadModel(
+              model: "assets/models/emotion_classification_7.tflite",
+              labels: "assets/models/emotion_classification_labels.txt",
+              useGpuDelegate: false);
+          _runRecognitionRecursive();
         },
       );
     }
@@ -172,15 +161,28 @@ class AppState extends State<App> {
     );
   }
 
-  Future<void> _takePictureDelayed() =>
-      Future.delayed(Duration(milliseconds: 500), () async {
-        String filePath = (await getTemporaryDirectory()).path +
-            '/image_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        setState(() {
-          _filePath = filePath;
-        });
-        await _cameraController.takePicture(filePath);
-      });
+  Future<void> _runRecognitionRecursive() async {
+    final filePath = await _takePicture();
+    final file = File.fromUri(Uri.file(filePath));
+    if (file.existsSync()) {
+      final faces = await detectFaces(file);
+      if (faces.length > 0) {
+        await detectEmotion(file, faces.first.boundingBox);
+      }
+    }
+    _runRecognitionRecursive();
+  }
+
+  Future<String> _takePicture() async {
+    String filePath = (await getTemporaryDirectory()).path +
+        '/image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    await _cameraController.takePicture(filePath);
+    if (Platform.isIOS) {
+      final file = await FlutterExifRotation.rotateImage(path: filePath);
+      filePath = file.path;
+    }
+    return filePath;
+  }
 
   void onSend(ChatMessage message) {
     var documentReference = FirebaseFirestore.instance
@@ -221,7 +223,7 @@ class AppState extends State<App> {
     await file.writeAsBytes(im.encodeJpg(grayscale));
 
     final recognitions = await Tflite.runModelOnImage(
-      path: _filePath,
+      path: file.path,
       imageMean: 0,
       imageStd: 255,
     );
