@@ -70,11 +70,14 @@ class AppState extends State<App> {
           if (!mounted) {
             return;
           }
-          await _cameraController.setFlashMode(FlashMode.off);
+          try {
+            await _cameraController.setFlashMode(FlashMode.off);
+          } on CameraException catch (e) {
+            print(e.description);
+          }
           await Tflite.loadModel(
               model: "assets/models/emotion_classification_7.tflite",
-              labels: "assets/models/emotion_classification_labels.txt",
-              useGpuDelegate: true);
+              labels: "assets/models/emotion_classification_labels.txt");
           _runRecognitionRecursive();
         },
       );

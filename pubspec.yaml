@@ -35,8 +35,10 @@ dependencies:
       ref: b7e48baefba245f5be519da5e12f90094a571eb9
   flutter_svg: ^0.19.1
   camera: ^0.6.4+5
-  tflite: ^1.1.1
-  firebase_ml_vision: ^0.9.10
+  tflite:
+    git:
+      url: https://github.com/shaqian/flutter_tflite.git
+  firebase_ml_vision: ^0.10.0
   image: ^2.1.19
   path_provider: ^1.6.27
   flutter_exif_rotation: ^0.3.2
