@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:adaptive_dialog/adaptive_dialog.dart';
 import 'package:avataar_generator/enums.dart';
 import 'package:firebase_ml_vision/firebase_ml_vision.dart' as ml;
 import 'package:flutter/foundation.dart';
@@ -95,6 +96,7 @@ class AppState extends State<App> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'xpress',
       theme: ThemeData(
         primaryColor: primaryColor,
@@ -132,8 +134,11 @@ class AppState extends State<App> {
               );
             } else {
               List<DocumentSnapshot> items = snapshot.data.documents;
-              var messages =
-                  items.map((i) => ChatMessage.fromJson(i.data())).toList();
+              var messages = items
+                  .map((item) => ChatMessage.fromJson(item.data()))
+                  .toList();
+              messages.sort((first, second) =>
+                  first.createdAt.compareTo(second.createdAt));
               return Stack(
                 children: <Widget>[
                   Column(
@@ -150,6 +155,16 @@ class AppState extends State<App> {
                             user: ChatUser(),
                             onSend: onSend,
                             messages: messages,
+                            avatarBuilder: (user) => CircleAvatar(
+                              backgroundColor: Colors.transparent,
+                              radius: 32.0,
+                              child: SvgPicture.string(
+                                emotionMap[user.avatar]
+                                    .replaceAll('path-', 'path'),
+                              ),
+                            ),
+                            onLongPressMessage: (message) async =>
+                                onDelete(message, context),
                           ),
                         ),
                       )
@@ -185,17 +200,26 @@ class AppState extends State<App> {
     return filePath;
   }
 
-  void onSend(ChatMessage message) {
-    var documentReference = FirebaseFirestore.instance
-        .collection(_pathCollection)
-        .doc(DateTime.now().millisecondsSinceEpoch.toString());
+  void onSend(ChatMessage message) async {
+    message.user.avatar = _emotion;
 
-    FirebaseFirestore.instance.runTransaction((transaction) async {
-      transaction.set(
-        documentReference,
-        message.toJson(),
-      );
-    });
+    await FirebaseFirestore.instance
+        .collection(_pathCollection)
+        .add(message.toJson());
+  }
+
+  void onDelete(ChatMessage message, BuildContext context) async {
+    final result = await showOkCancelAlertDialog(
+        context: context,
+        message: "Do you really want to delete this message?");
+    if (result == OkCancelResult.ok) {
+      final snapshot = await FirebaseFirestore.instance
+          .collection(_pathCollection)
+          .where("id", isEqualTo: message.id)
+          .get();
+
+      await snapshot.docs.first.reference.delete();
+    }
   }
 
   String timestamp() => DateTime.now().millisecondsSinceEpoch.toString();
